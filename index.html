@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Школьный помощник</title>
+<meta name="description" content="Заметки, напоминания и школьное расписание с уведомлениями">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Школа">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f1f2f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f1f2f6; --text: #111111; --hint: #8a8f98;
+    --accent: #2f81f7; --accent-text: #ffffff; --danger: #e5484d; --ok: #2da44e;
+    --line: rgba(138, 143, 152, .25);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1c1e; --bg2: #000000; --text: #f2f2f7; --hint: #8e8e93; --line: rgba(142, 142, 147, .25); }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg2); color: var(--text);
+    font: 16px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  }
+  main { padding: 8px 16px 16px; max-width: 560px; margin: 0 auto; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); margin: 20px 4px 8px; font-weight: 600; }
+  .card { background: var(--bg); border-radius: 14px; padding: 14px 16px; }
+  .list { background: var(--bg); border-radius: 14px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .grow { flex: 1; min-width: 0; }
+  .muted { color: var(--hint); font-size: 13px; }
+  .empty { color: var(--hint); text-align: center; padding: 20px; }
+  .pre { white-space: pre-wrap; word-break: break-word; }
+
+  .now-label { font-size: 13px; color: var(--hint); }
+  .now-title { font-size: 24px; font-weight: 700; margin: 2px 0 4px; }
+  .bar { height: 6px; background: var(--bg2); border-radius: 3px; margin-top: 12px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  .lesson-n { width: 26px; height: 26px; border-radius: 50%; background: var(--bg2); display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: none; }
+  .row.current .lesson-n { background: var(--accent); color: var(--accent-text); }
+  .row.past { opacity: .5; }
+
+  input, select, textarea {
+    font: inherit; color: var(--text); background: var(--bg2); border: 1px solid transparent;
+    border-radius: 10px; padding: 10px 12px; width: 100%; min-height: 44px; -webkit-appearance: none; appearance: none;
+  }
+  select { background-image: linear-gradient(45deg, transparent 50%, var(--hint) 50%), linear-gradient(135deg, var(--hint) 50%, transparent 50%);
+    background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
+  ::placeholder { color: var(--hint); opacity: .8; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  label { display: block; font-size: 13px; color: var(--hint); margin: 10px 0 4px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 10px; min-height: 44px; padding: 0 16px;
+    background: var(--accent); color: var(--accent-text); cursor: pointer; width: 100%; margin-top: 12px;
+  }
+  button:disabled { opacity: .5; }
+  button.secondary { background: var(--bg2); color: var(--accent); }
+  button.ghost { background: transparent; color: var(--accent); width: auto; margin: 0; padding: 0 8px; }
+  button.del { background: transparent; color: var(--danger); width: 44px; padding: 0; margin: 0; flex: none; font-size: 18px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .days { display: flex; gap: 6px; }
+  .days button { margin: 0; flex: 1; min-width: 0; background: var(--bg); color: var(--text); padding: 0; }
+  .days button.on { background: var(--accent); color: var(--accent-text); }
+  .slot { display: grid; grid-template-columns: 26px 1fr 72px; gap: 8px; align-items: center; padding: 6px 12px; }
+  .bell { display: grid; grid-template-columns: 26px 1fr 1fr 44px; gap: 8px; align-items: center; padding: 6px 12px; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+  .switch input { width: 22px; min-height: 22px; -webkit-appearance: checkbox; appearance: auto; accent-color: var(--accent); }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .step .lesson-n.done { background: var(--ok); color: #fff; }
+  .key { font-family: ui-monospace, Menlo, monospace; font-size: 13px; word-break: break-all; background: var(--bg2); padding: 8px 10px; border-radius: 8px; margin-top: 8px; }
+  .status { font-size: 13px; margin-top: 8px; }
+  .status.err { color: var(--danger); }
+  .status.ok { color: var(--ok); }
+
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--bg);
+    border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav button {
+    flex: 1; margin: 0; border-radius: 0; background: transparent; color: var(--hint); min-width: 0; padding: 0 2px;
+    min-height: 56px; font-size: 11px; font-weight: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  nav button span { font-size: 20px; line-height: 1; }
+  nav button.on { color: var(--accent); }
+  .tab { display: none; }
+  .tab.on { display: block; }
+  .toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+  .toast.show { opacity: .92; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <!-- Сейчас -->
+  <section class="tab on" id="tab-now">
+    <h2 id="today-title">Сегодня</h2>
+    <div class="card" id="now-card"></div>
+    <h2>Уроки</h2>
+    <div class="list" id="today-list"></div>
+    <h2>Ближайшие напоминания</h2>
+    <div class="list" id="soon-list"></div>
+  </section>
+
+  <!-- Заметки -->
+  <section class="tab" id="tab-notes">
+    <h2>Новая заметка</h2>
+    <div class="card">
+      <label for="note-text">Текст</label>
+      <textarea id="note-text" placeholder="Например: принести циркуль на геометрию"></textarea>
+      <button id="note-add">Сохранить заметку</button>
+    </div>
+    <h2>Заметки</h2>
+    <div class="list" id="notes-list"></div>
+  </section>
+
+  <!-- Напоминания -->
+  <section class="tab" id="tab-rem">
+    <h2>Новое напоминание</h2>
+    <div class="card">
+      <label for="rem-text">О чём напомнить</label>
+      <input id="rem-text">
+      <div class="grid2">
+        <div><label for="rem-due">Когда</label><input id="rem-due" type="datetime-local"></div>
+        <div><label for="rem-repeat">Повтор</label>
+          <select id="rem-repeat">
+            <option value="none">Один раз</option>
+            <option value="daily">Каждый день</option>
+            <option value="weekly">Каждую неделю</option>
+          </select>
+        </div>
+      </div>
+      <button id="rem-add">Создать напоминание</button>
+    </div>
+    <h2>Напоминания</h2>
+    <div class="list" id="rem-list"></div>
+  </section>
+
+  <!-- Расписание -->
+  <section class="tab" id="tab-sched">
+    <h2>Уроки по дням</h2>
+    <div class="days" id="days"></div>
+    <div class="list" id="slots" style="margin-top:8px;padding:6px 0"></div>
+
+    <h2>Звонки</h2>
+    <div class="list" id="bells" style="padding:6px 0"></div>
+    <button class="ghost" id="bell-add" style="margin-top:6px;min-height:44px">+ Добавить урок</button>
+
+    <h2>Уведомления об уроках</h2>
+    <div class="card">
+      <div class="switch"><label for="school-on" style="margin:0;color:var(--text);font-size:16px">Присылать уведомления</label><input type="checkbox" id="school-on"></div>
+      <div class="grid2">
+        <div><label for="notify-before">Перед уроком</label>
+          <select id="notify-before">
+            <option value="0">В момент начала</option>
+            <option value="2">За 2 мин</option>
+            <option value="5">За 5 мин</option>
+            <option value="10">За 10 мин</option>
+          </select>
+        </div>
+        <div><label for="morning-at">Утренняя сводка</label><input id="morning-at" type="time"></div>
+      </div>
+      <div class="muted" style="margin-top:8px">Пустое время сводки — без сводки. На каникулах выключи уведомления переключателем.</div>
+    </div>
+    <button id="sched-save">Сохранить расписание</button>
+  </section>
+
+  <!-- Настройки -->
+  <section class="tab" id="tab-set">
+    <h2>Шаг 1. Подключить GitHub</h2>
+    <div class="card">
+      <div class="step"><div class="lesson-n" id="step1-n">1</div><div class="grow muted" id="step1-text">
+        Данные шифруются и хранятся в твоём репозитории. Оттуда GitHub Actions присылает уведомления.</div></div>
+      <div id="connect-form">
+        <label for="gh-repo">Репозиторий</label>
+        <input id="gh-repo" placeholder="логин/school" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <label for="gh-token">Токен GitHub</label>
+        <input id="gh-token" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <label for="gh-key">Ключ шифрования (если уже подключал на другом устройстве)</label>
+        <input id="gh-key" placeholder="Можно оставить пустым" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button id="gh-connect">Подключить</button>
+      </div>
+      <div id="connected" hidden>
+        <div class="status" id="sync-status"></div>
+        <label>Ключ шифрования (нужен, чтобы подключить другое устройство)</label>
+        <div class="key" id="key-view"></div>
+        <button class="secondary" id="key-copy">Скопировать ключ</button>
+        <div id="secret-manual" hidden>
+          <div class="status err">Не получилось сохранить ключ в GitHub автоматически. Добавь его вручную:
+            секрет с именем <b>DATA_KEY</b>, значение — ключ выше.</div>
+          <button class="secondary" id="secret-open">Открыть настройки секретов</button>
+        </div>
+        <button class="secondary" id="gh-disconnect">Отключить это устройство</button>
+      </div>
+      <div class="status" id="connect-status"></div>
+    </div>
+
+    <h2>Шаг 2. Включить уведомления</h2>
+    <div class="card">
+      <div class="step"><div class="lesson-n" id="step2-n">2</div><div class="grow muted" id="push-hint"></div></div>
+      <button id="push-enable">Разрешить уведомления</button>
+      <div class="status" id="push-status"></div>
+    </div>
+
+    <h2>Шаг 3. Проверить</h2>
+    <div class="card">
+      <div class="muted">GitHub пришлёт тестовое уведомление. Обычно это занимает 1–2 минуты.</div>
+      <button class="secondary" id="push-test">Прислать тестовое уведомление</button>
+      <div class="status" id="test-status"></div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button class="on" data-tab="now"><span>🏫</span>Сейчас</button>
+  <button data-tab="notes"><span>📝</span>Заметки</button>
+  <button data-tab="rem"><span>⏰</span>Напомнить</button>
+  <button data-tab="sched"><span>🗓</span>Уроки</button>
+  <button data-tab="set"><span>⚙️</span>Настройки</button>
+</nav>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const DEFAULT_BELLS = [["08:30","09:15"],["09:25","10:10"],["10:30","11:15"],["11:35","12:20"],["12:30","13:15"],["13:25","14:10"],["14:20","15:05"]];
+const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const DAY_NAMES = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
+const REPEAT = { none: "", daily: " · каждый день", weekly: " · каждую неделю" };
+const STEP_MS = { daily: 864e5, weekly: 7 * 864e5 };
+const DATA_BRANCH = "data";
+const DATA_FILE = "state.enc.json";
+const $ = (id) => document.getElementById(id);
+
+// ---------- локальное хранилище ----------
+function lsGet(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
+function lsSet(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+
+function newState() {
+  return {
+    version: 1,
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    site: location.origin + location.pathname.replace(/index\.html$/, ""),
+    bells: DEFAULT_BELLS, timetable: {}, school_on: true, notify_before: 5, morning_at: "07:30",
+    notes: [], reminders: [], subscriptions: [], vapid: null, updated_at: 0,
+  };
+}
+
+let state = Object.assign(newState(), lsGet("school.state") || {});
+let cfg = lsGet("school.cfg");      // {repo, token, key, branch}
+let draft = structuredClone(state);
+let selDay = Math.min(weekday(new Date()), 5);
+
+function commit() {
+  state.updated_at = Date.now();
+  lsSet("school.state", state);
+  scheduleSync();
+}
+
+// ---------- мелочи ----------
+function toast(text) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2200);
+}
+function setStatus(id, text, kind = "") { const e = $(id); e.textContent = text; e.className = "status " + kind; }
+
+function el(tag, attrs = {}, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) e.append(c);
+  return e;
+}
+
+function weekday(d) { return (d.getDay() + 6) % 7; }   // Пн = 0
+const hhmm = (d) => d.toTimeString().slice(0, 5);
+const minutes = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const pad = (n) => String(n).padStart(2, "0");
+const localIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${hhmm(d)}`;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function lessonsFor(s, wd) {
+  const subjects = s.timetable[String(wd)] || [];
+  return s.bells.map(([start, end], i) => ({ n: i + 1, start, end, ...(subjects[i] || {}) }))
+    .filter((l) => (l.subject || "").trim());
+}
+
+function nextOccurrence(r, now = new Date()) {
+  let due = new Date(r.due_at);
+  if (r.repeat in STEP_MS && due < now) due = new Date(due.getTime() + Math.ceil((now - due) / STEP_MS[r.repeat]) * STEP_MS[r.repeat]);
+  return due;
+}
+
+function fmtWhen(d) {
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const day = d.toDateString() === now.toDateString() ? "Сегодня"
+    : d.toDateString() === tomorrow.toDateString() ? "Завтра"
+    : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" });
+  return `${day}, ${hhmm(d)}`;
+}
+
+// ---------- Сейчас ----------
+function renderNow() {
+  const now = new Date();
+  const wd = weekday(now);
+  const t = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  const lessons = lessonsFor(state, wd);
+  $("today-title").textContent = `${DAY_NAMES[wd]}, ${now.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`;
+
+  const card = $("now-card"); card.replaceChildren();
+  let current = null, next = null;
+  for (const l of lessons) {
+    if (minutes(l.start) <= t && t < minutes(l.end)) current = l;
+    else if (!next && t < minutes(l.start)) next = l;
+  }
+  const room = (l) => (l.room ? ` · каб. ${l.room}` : "");
+  if (current) {
+    const total = minutes(current.end) - minutes(current.start);
+    const done = t - minutes(current.start);
+    const after = lessons.find((l) => l.n > current.n);
+    card.append(
+      el("div", { class: "now-label" }, `Сейчас ${current.n}-й урок${room(current)}`),
+      el("div", { class: "now-title" }, current.subject),
+      el("div", { class: "muted" }, `Осталось ${Math.ceil(total - done)} мин, до ${current.end}` + (after ? ` · дальше ${after.subject}` : "")),
+      el("div", { class: "bar" }, el("div", { style: `width:${(done / total) * 100}%` })),
+    );
+  } else if (next) {
+    card.append(
+      el("div", { class: "now-label" }, next === lessons[0] ? "До начала уроков" : "Перемена"),
+      el("div", { class: "now-title" }, `${next.start} — ${next.subject}`),
+      el("div", { class: "muted" }, `${next.n}-й урок${room(next)} · через ${Math.ceil(minutes(next.start) - t)} мин`),
+    );
+  } else {
+    card.append(
+      el("div", { class: "now-label" }, lessons.length ? "Уроки закончились" : "Сегодня уроков нет"),
+      el("div", { class: "now-title" }, "Свободное время 🎉"),
+    );
+    if (!Object.values(state.timetable).some((d) => d.some((x) => x && x.subject)))
+      card.append(el("button", { onclick: () => openTab("sched") }, "Заполнить расписание"));
+  }
+
+  const list = $("today-list"); list.replaceChildren();
+  if (!lessons.length) list.append(el("div", { class: "empty" }, "Нет уроков"));
+  for (const l of lessons) {
+    const cls = l === current ? "row current" : t >= minutes(l.end) ? "row past" : "row";
+    list.append(el("div", { class: cls },
+      el("div", { class: "lesson-n" }, String(l.n)),
+      el("div", { class: "grow" }, el("div", {}, l.subject), el("div", { class: "muted" }, `${l.start}–${l.end}${room(l)}`)),
+    ));
+  }
+
+  const soon = $("soon-list"); soon.replaceChildren();
+  const upcoming = sortedReminders().slice(0, 3);
+  if (!upcoming.length) soon.append(el("div", { class: "empty" }, "Пока ничего"));
+  for (const r of upcoming) soon.append(reminderRow(r));
+}
+
+// ---------- Заметки ----------
+function renderNotes() {
+  const list = $("notes-list"); list.replaceChildren();
+  if (!state.notes.length) list.append(el("div", { class: "empty" }, "Заметок пока нет"));
+  for (const n of state.notes) {
+    list.append(el("div", { class: "row" },
+      el("div", { class: "grow" }, el("div", { class: "pre" }, n.text), el("div", { class: "muted" }, fmtWhen(new Date(n.created_at)))),
+      el("button", { class: "del", "aria-label": "Удалить заметку", onclick: () => {
+        state.notes = state.notes.filter((x) => x.id !== n.id); commit(); renderNotes();
+      } }, "✕"),
+    ));
+  }
+}
+
+$("note-add").onclick = () => {
+  const text = $("note-text").value.trim();
+  if (!text) return $("note-text").focus();
+  state.notes.unshift({ id: uid(), text, created_at: localIso(new Date()) });
+  commit(); $("note-text").value = ""; renderNotes(); toast("Заметка сохранена");
+};
+
+// ---------- Напоминания ----------
+function sortedReminders() {
+  return [...state.reminders].sort((a, b) => nextOccurrence(a) - nextOccurrence(b));
+}
+
+function reminderRow(r) {
+  return el("div", { class: "row" },
+    el("div", { class: "grow" }, el("div", { class: "pre" }, r.text), el("div", { class: "muted" }, fmtWhen(nextOccurrence(r)) + REPEAT[r.repeat])),
+    el("button", { class: "del", "aria-label": "Удалить напоминание", onclick: () => {
+      state.reminders = state.reminders.filter((x) => x.id !== r.id); commit(); renderRem(); renderNow();
+    } }, "✕"),
+  );
+}
+
+function renderRem() {
+  const list = $("rem-list"); list.replaceChildren();
+  if (!state.reminders.length) list.append(el("div", { class: "empty" }, "Напоминаний нет"));
+  for (const r of sortedReminders()) list.append(reminderRow(r));
+}
+
+function resetDue() {
+  const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
+  $("rem-due").value = localIso(d);
+}
+
+$("rem-add").onclick = () => {
+  const text = $("rem-text").value.trim();
+  const due_at = $("rem-due").value.slice(0, 16);
+  if (!text) return $("rem-text").focus();
+  if (!due_at) return $("rem-due").focus();
+  state.reminders.push({ id: uid(), text, due_at, repeat: $("rem-repeat").value });
+  commit(); $("rem-text").value = ""; resetDue(); renderRem(); renderNow();
+  toast("Напомню: " + fmtWhen(new Date(due_at)));
+};
+
+// разовые напоминания, которые давно прошли, убираем
+function cleanupReminders() {
+  const dayAgo = Date.now() - 864e5;
+  const left = state.reminders.filter((r) => r.repeat !== "none" || new Date(r.due_at).getTime() > dayAgo);
+  if (left.length !== state.reminders.length) { state.reminders = left; commit(); }
+}
+
+// ---------- Расписание ----------
+function renderSched() {
+  const days = $("days"); days.replaceChildren();
+  DAYS.slice(0, 6).forEach((d, i) => days.append(
+    el("button", { class: i === selDay ? "on" : "", "aria-pressed": String(i === selDay), onclick: () => { selDay = i; renderSched(); } }, d)));
+
+  const slots = $("slots"); slots.replaceChildren();
+  const day = (draft.timetable[String(selDay)] ||= []);
+  draft.bells.forEach(([start, end], i) => {
+    day[i] ||= { subject: "", room: "" };
+    const subj = el("input", { placeholder: `${start}–${end}`, "aria-label": `Предмет, ${i + 1}-й урок` });
+    subj.value = day[i].subject; subj.oninput = () => (day[i].subject = subj.value);
+    const room = el("input", { placeholder: "Каб.", "aria-label": `Кабинет, ${i + 1}-й урок` });
+    room.value = day[i].room; room.oninput = () => (day[i].room = room.value);
+    slots.append(el("div", { class: "slot" }, el("div", { class: "lesson-n" }, String(i + 1)), subj, room));
+  });
+
+  const bells = $("bells"); bells.replaceChildren();
+  draft.bells.forEach((b, i) => {
+    const s = el("input", { type: "time", "aria-label": `Начало ${i + 1}-го урока` }); s.value = b[0];
+    s.onchange = () => { b[0] = s.value; renderSched(); };
+    const e = el("input", { type: "time", "aria-label": `Конец ${i + 1}-го урока` }); e.value = b[1];
+    e.onchange = () => { b[1] = e.value; renderSched(); };
+    bells.append(el("div", { class: "bell" },
+      el("div", { class: "lesson-n" }, String(i + 1)), s, e,
+      el("button", { class: "del", "aria-label": `Удалить ${i + 1}-й урок`, onclick: () => {
+        draft.bells.splice(i, 1);
+        for (const d of Object.values(draft.timetable)) d.splice(i, 1);
+        renderSched();
+      } }, "✕")));
+  });
+
+  $("school-on").checked = draft.school_on;
+  $("notify-before").value = String(draft.notify_before);
+  $("morning-at").value = draft.morning_at;
+}
+
+$("bell-add").onclick = () => {
+  const last = draft.bells[draft.bells.length - 1];
+  const start = last ? minutes(last[1]) + 10 : 8 * 60 + 30;
+  const t = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+  draft.bells.push([t(start), t(start + 45)]);
+  renderSched();
+};
+
+$("sched-save").onclick = () => {
+  draft.school_on = $("school-on").checked;
+  draft.notify_before = Number($("notify-before").value);
+  draft.morning_at = $("morning-at").value;
+  if (draft.bells.some(([a, b]) => !a || !b || a >= b)) return toast("Проверь время звонков: начало должно быть раньше конца");
+  for (const k of ["bells", "timetable", "school_on", "notify_before", "morning_at"]) state[k] = structuredClone(draft[k]);
+  state.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  commit(); renderNow(); toast("Расписание сохранено");
+};
+
+// ---------- шифрование ----------
+function b64(bytes) {
+  bytes = new Uint8Array(bytes);
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+const b64url = (bytes) => b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function aesKey() {
+  return crypto.subtle.importKey("raw", unb64(cfg.key), "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function encrypt(obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(), new TextEncoder().encode(JSON.stringify(obj)));
+  return { v: 1, iv: b64(iv), ct: b64(ct) };
+}
+async function decrypt(blob) {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(blob.iv) }, await aesKey(), unb64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+async function makeVapid() {
+  const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const jwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+  return { publicKey: b64url(await crypto.subtle.exportKey("raw", kp.publicKey)), privateKey: jwk.d };
+}
+
+// ---------- GitHub ----------
+class GhError extends Error { constructor(status, text) { super(`GitHub ${status}: ${text}`); this.status = status; } }
+
+async function gh(method, path, body) {
+  const res = await fetch("https://api.github.com" + path, {
+    method, cache: "no-store",
+    headers: { Authorization: `Bearer ${cfg.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 404 && method === "GET") return null;
+  if (!res.ok) throw new GhError(res.status, (await res.text()).slice(0, 200));
+  return res.status === 204 ? {} : res.json();
+}
+
+async function pullRemote() {
+  const f = await gh("GET", `/repos/${cfg.repo}/contents/${DATA_FILE}?ref=${DATA_BRANCH}`);
+  if (!f) return { sha: null, data: null };
+  try {
+    return { sha: f.sha, data: await decrypt(JSON.parse(atob(f.content.replace(/\s/g, "")))) };
+  } catch {
+    return { sha: f.sha, data: null, badKey: true };
+  }
+}
+
+function mergeSubs(a = [], b = []) {
+  const map = new Map();
+  for (const s of [...a, ...b]) map.set(s.endpoint, s);
+  return [...map.values()];
+}
+
+async function pushRemote({ force = false } = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remote = await pullRemote();
+    if (remote.badKey && !force) throw new Error("Ключ шифрования не подходит к данным в репозитории");
+    if (remote.data) {
+      state.subscriptions = mergeSubs(remote.data.subscriptions, state.subscriptions);
+      state.vapid = remote.data.vapid || state.vapid;
+    }
+    const body = { message: "Обновить данные", branch: DATA_BRANCH, content: btoa(JSON.stringify(await encrypt(state))) };
+    if (remote.sha) body.sha = remote.sha;
+    try {
+      await gh("PUT", `/repos/${cfg.repo}/contents/${DATA_FILE}`, body);
+      lsSet("school.state", state);
+      return;
+    } catch (e) {
+      if (e.status !== 409 || attempt) throw e;   // файл успели поменять с другого устройства — пробуем ещё раз
+    }
+  }
+}
+
+let syncTimer = null, syncing = false;
+function scheduleSync() {
+  if (!cfg) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, 1500);
+  setStatus("sync-status", "Есть несохранённые изменения…");
+}
+
+async function syncNow() {
+  if (!cfg || syncing) return;
+  syncing = true;
+  try {
+    await pushRemote();
+    setStatus("sync-status", `Синхронизировано в ${hhmm(new Date())}`, "ok");
+  } catch (e) {
+    setStatus("sync-status", "Не получилось синхронизировать: " + e.message, "err");
+  } finally { syncing = false; }
+}
+
+// при открытии подтягиваем свежие данные (например, изменённые с компьютера)
+async function pullOnOpen() {
+  if (!cfg) return;
+  try {
+    const remote = await pullRemote();
+    if (remote.badKey) return setStatus("sync-status", "Ключ шифрования не подходит к данным в репозитории", "err");
+    if (remote.data && remote.data.updated_at > state.updated_at) {
+      const subs = mergeSubs(remote.data.subscriptions, state.subscriptions);
+      state = Object.assign(newState(), remote.data, { subscriptions: subs });
+      lsSet("school.state", state);
+      draft = structuredClone(state);
+      renderAll();
+    }
+    setStatus("sync-status", `Синхронизировано в ${hhmm(new Date())}`, "ok");
+  } catch (e) {
+    setStatus("sync-status", "Нет связи с GitHub: " + e.message, "err");
+  }
+}
+
+async function saveSecret() {
+  const pk = await gh("GET", `/repos/${cfg.repo}/actions/secrets/public-key`);
+  const { default: sodium } = await import("https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.15/+esm");
+  await sodium.ready;
+  const sealed = sodium.crypto_box_seal(sodium.from_string(cfg.key), sodium.from_base64(pk.key, sodium.base64_variants.ORIGINAL));
+  await gh("PUT", `/repos/${cfg.repo}/actions/secrets/DATA_KEY`, {
+    encrypted_value: sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL), key_id: pk.key_id,
+  });
+}
+
+$("gh-connect").onclick = async () => {
+  const repo = $("gh-repo").value.trim().replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "");
+  const token = $("gh-token").value.trim();
+  const existingKey = $("gh-key").value.trim();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return setStatus("connect-status", "Репозиторий пишется так: логин/название", "err");
+  if (!token) return $("gh-token").focus();
+
+  const btn = $("gh-connect"); btn.disabled = true;
+  setStatus("connect-status", "Подключаю…");
+  cfg = { repo, token, key: existingKey || b64(crypto.getRandomValues(new Uint8Array(32))) };
+  try {
+    const info = await gh("GET", `/repos/${repo}`);
+    if (!info) throw new Error("Репозиторий не найден или у токена нет к нему доступа");
+    cfg.branch = info.default_branch;
+
+    if (!(await gh("GET", `/repos/${repo}/git/ref/heads/${DATA_BRANCH}`))) {
+      const main = await gh("GET", `/repos/${repo}/git/ref/heads/${info.default_branch}`);
+      await gh("POST", `/repos/${repo}/git/refs`, { ref: `refs/heads/${DATA_BRANCH}`, sha: main.object.sha });
+    }
+
+    let secretOk = true;
+    if (existingKey) {
+      const remote = await pullRemote();
+      if (remote.badKey) throw new Error("Ключ не подходит к данным в репозитории");
+      if (remote.data && remote.data.updated_at > state.updated_at) state = Object.assign(newState(), remote.data);
+    } else {
+      try { await saveSecret(); } catch (e) { console.error(e); secretOk = false; }
+    }
+    if (!state.vapid) state.vapid = await makeVapid();
+    await pushRemote({ force: !existingKey });
+
+    lsSet("school.cfg", cfg);
+    lsSet("school.secretOk", secretOk);
+    draft = structuredClone(state);
+    $("gh-token").value = ""; $("gh-key").value = "";
+    setStatus("connect-status", "");
+    renderAll();
+    toast("GitHub подключён");
+  } catch (e) {
+    cfg = null;
+    setStatus("connect-status", "Не получилось: " + e.message, "err");
+  } finally { btn.disabled = false; }
+};
+
+$("key-copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(cfg.key); toast("Ключ скопирован"); } catch { toast("Выдели ключ и скопируй вручную"); }
+};
+$("secret-open").onclick = () => window.open(`https://github.com/${cfg.repo}/settings/secrets/actions/new`, "_blank");
+$("gh-disconnect").onclick = () => {
+  if (!confirm("Отключить GitHub на этом устройстве? Данные в репозитории останутся.")) return;
+  cfg = null;
+  try { localStorage.removeItem("school.cfg"); } catch {}
+  renderSettings();
+};
+
+// ---------- пуш-уведомления ----------
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+async function currentSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
+$("push-enable").onclick = async () => {
+  if (!cfg || !state.vapid) return setStatus("push-status", "Сначала подключи GitHub (шаг 1)", "err");
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window))
+    return setStatus("push-status", isIOS ? "Сначала добавь приложение на экран «Домой» и открой его оттуда" : "Этот браузер не поддерживает уведомления", "err");
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") return setStatus("push-status", "Уведомления запрещены. Разреши их в настройках айфона: Настройки → Уведомления → Школа", "err");
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    const key = unb64(state.vapid.publicKey);
+    if (sub && sub.options.applicationServerKey && b64(sub.options.applicationServerKey) !== b64(key)) { await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    const j = sub.toJSON();
+    state.subscriptions = [...state.subscriptions.filter((s) => s.endpoint !== j.endpoint), { endpoint: j.endpoint, keys: j.keys }];
+    commit(); await syncNow();
+    renderSettings();
+    toast("Уведомления включены");
+  } catch (e) {
+    setStatus("push-status", "Не получилось включить: " + e.message, "err");
+  }
+};
+
+$("push-test").onclick = async () => {
+  if (!cfg) return setStatus("test-status", "Сначала подключи GitHub (шаг 1)", "err");
+  try {
+    await gh("POST", `/repos/${cfg.repo}/actions/workflows/notify.yml/dispatches`, { ref: cfg.branch || "main", inputs: { test: "true" } });
+    setStatus("test-status", "Запрос отправлен — уведомление придёт через 1–2 минуты", "ok");
+  } catch (e) {
+    setStatus("test-status", "Не получилось: " + e.message, "err");
+  }
+};
+
+async function renderSettings() {
+  const connected = !!cfg;
+  $("connect-form").hidden = connected;
+  $("connected").hidden = !connected;
+  $("step1-n").classList.toggle("done", connected);
+  $("step1-n").textContent = connected ? "✓" : "1";
+  if (connected) {
+    $("step1-text").textContent = `Подключено: ${cfg.repo}`;
+    $("key-view").textContent = cfg.key;
+    $("secret-manual").hidden = lsGet("school.secretOk") !== false;
+  } else {
+    $("step1-text").textContent = "Данные шифруются и хранятся в твоём репозитории. Оттуда GitHub Actions присылает уведомления.";
+  }
+
+  let sub = null;
+  try { sub = await currentSubscription(); } catch {}
+  const pushOn = !!sub && Notification.permission === "granted" && state.subscriptions.some((s) => s.endpoint === sub.endpoint);
+  $("step2-n").classList.toggle("done", pushOn);
+  $("step2-n").textContent = pushOn ? "✓" : "2";
+  $("push-enable").hidden = pushOn;
+  $("push-hint").textContent = pushOn ? "Уведомления включены на этом устройстве"
+    : isIOS && !isStandalone ? "На айфоне: нажми «Поделиться» внизу Safari → «На экран „Домой“», открой приложение с иконки и нажми кнопку ниже."
+    : "Разреши уведомления, чтобы получать напоминания и расписание.";
+}
+
+// ---------- навигация и запуск ----------
+function openTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.id === `tab-${name}`));
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  if (name === "sched") { draft = structuredClone(state); renderSched(); }
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => openTab(b.dataset.tab)));
+
+function renderAll() { renderNow(); renderNotes(); renderRem(); renderSched(); renderSettings(); }
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(console.error);
+cleanupReminders();
+resetDue();
+renderAll();
+pullOnOpen();
+setInterval(renderNow, 15000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { renderNow(); pullOnOpen(); } });
+</script>
+</body>
+</html>
